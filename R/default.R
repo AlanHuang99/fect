@@ -1,8 +1,5 @@
 ## Causal inference using counterfactual estimators 
 ## (fect: fixed effects counterfactuals)
-## Version 0.7.0
-## Author: Licheng Liu (Tsinghua), Ye Wang(NYU), Yiqing Xu(Stanford), Ziyi Liu(Uchicago)
-## Date: 2022.08.07
 
 ## MAIN FUNCTION
 ## fect.formula()
@@ -58,7 +55,7 @@ fect <- function(formula = NULL, data, # a data frame (long-form)
                  alpha = 0.05, # significance level
                  parallel = TRUE, # parallel computing
                  cores = NULL, # number of cores
-                 tol = 0.001, # tolerance level
+                 tol = 1e-3, # tolerance level
                  max.iteration = 1000,
                  seed = NULL, # set seed
                  min.T0 = NULL, # minimum T0
@@ -119,7 +116,7 @@ fect.formula <- function(formula = NULL,
                          alpha = 0.05, # significance level
                          parallel = TRUE, # parallel computing
                          cores = NULL, # number of cores
-                         tol = 0.001, # tolerance level
+                         tol = 1e-3, # tolerance level
                          max.iteration = 1000,
                          seed = NULL, # set seed
                          min.T0 = NULL,
@@ -269,7 +266,7 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
                          alpha = 0.05, # significance level
                          parallel = TRUE, # parallel computing
                          cores = NULL, # number of cores
-                         tol = 0.001, # tolerance level
+                         tol = 1e-3, # tolerance level
                          max.iteration = 1000,
                          seed = NULL, # set seed
                          min.T0 = NULL,
@@ -629,6 +626,10 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
         if (! cl %in% names(data)) {
             stop("\"cl\" misspecified.\n")
         }
+        if(length(cl)!=1){
+            stop("Length of \"cl\" must be 1.\n")
+        }
+        if(cl==index[1]){cl <- NULL}
     } 
 
     if(method == 'cfe'){
@@ -1454,6 +1455,7 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
         g.level <- g.level[!is.na(g.level)]
         rownames(rawgroup) <- rawgroup[,'newgroup']
         names(g.level) <- rawgroup[as.character(g.level),'rawgroup']
+        g.level <- sort(g.level)
     }
 
     ##-------------------------------##
@@ -1653,18 +1655,24 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
         proportion <- 0    
     }
     max.count <- max(out$count)
-    
+    #print(pre.periods)
     max.pre.periods <- out$time[which(out$count >= max.count * proportion & out$time <= 0)]
     all.pre.periods <- out$time[which(out$time <= 0)]
     if (is.null(pre.periods) == TRUE) {        
         pre.periods <- max.pre.periods     
     } 
-    else {
+    else if(length(pre.periods)>0) {
         pre.periods <- intersect(pre.periods[1]:pre.periods[length(pre.periods)], max.pre.periods)
-    }   
-    pre.term <- pre.periods
-    N_bar <- max(out$count[which(out$time %in% pre.periods)])
-      
+    }
+    else{
+        pre.periods <- NULL
+    }
+
+    if(!is.null(pre.periods)){
+        pre.term <- pre.periods
+        N_bar <- max(out$count[which(out$time %in% pre.periods)])        
+    }
+ 
     if (placeboEquiv == TRUE) {
         pre.term <- all.pre.periods
         r.cv <- out$r.cv 
@@ -1734,6 +1742,9 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
             pT.off <- T.off
             pG <- G
             pW <- W
+            if (!is.null(cl)) {
+                p.cl <- cl
+            }else{p.cl <- NULL}
 
             pII[placebo.pos] <- 0 ## placebo treatment
 
@@ -1785,7 +1796,7 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
                     pT.on <- as.matrix(T.on[,-rm.id.2.pos])
                     if (!is.null(cl)) {
                         p.cl <- cl[-rm.id.2.pos]
-                    }
+                    }else{p.cl <- NULL}
                     if(hasRevs){
                         pT.off <- as.matrix(T.off[,-rm.id.2.pos])
                     }
@@ -1827,10 +1838,9 @@ fect.default <- function(formula = NULL, data, # a data frame (long-form)
                 p.est.att <- p.out$est.att 
                 p.att.bound <- p.out$att.bound 
                 p.pos <- which(as.numeric(rownames(p.est.att)) == kk)
-
                 pre.est.att[jj, ] <- p.est.att[p.pos, ]
                 pre.att.bound[jj, ] <- p.att.bound[p.pos, ]
-                pre.att.boot[jj, ] <- p.out$att.boot[p.pos, ]
+                pre.att.boot[jj, ] <- p.out$att.boot.original[p.pos, ]
                 pre.period.name <- rownames(pre.est.att)[jj]
 
 
