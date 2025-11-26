@@ -335,7 +335,9 @@ fect_boot <- function(
         group = group,
         cv.prop = cv.prop,
         cv.treat = cv.treat,
-        cv.nobs = cv.nobs
+        cv.nobs = cv.nobs,
+        parallel = parallel,
+        cores = cores
       )
 
       # method <- out$method
