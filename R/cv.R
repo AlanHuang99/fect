@@ -338,11 +338,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
         }
 
 
-        ##  --------------------------------------------- ##
-        ##  ---------------- cross validation for ife model ------------------  ##
-        ##  --------------------------------------------- ##
-
-        ## Setup parallel backend if requested
+        ## Setup parallel backend if requested (used by both IFE and MC methods)
         if (parallel == TRUE) {
             if (is.null(cores)) {
                 cores <- min(parallel::detectCores() - 2, 8)
@@ -351,6 +347,10 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
             para.clusters <- parallel::makeCluster(cores)
             doParallel::registerDoParallel(para.clusters)
         }
+
+        ##  --------------------------------------------- ##
+        ##  ---------------- cross validation for ife model ------------------  ##
+        ##  --------------------------------------------- ##
 
         if (method %in% c("ife", "both")) {
             message("Interactive fixed effects model...\n")
