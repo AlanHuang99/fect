@@ -427,7 +427,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                             WGSSE_local <- 0
                             ll.length_local <- 0
                             MAD.list_local <- c()
-                            W.estCV_local <- list()
+                            W.estCV_local <- c()
                             
                             if (use_weight == 0) {
                                 SSE_local <- sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
@@ -439,7 +439,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                                 ll.length_local <- length(ll)
                                 MAD.list_local <- (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
                             } else {
-                                W.estCV_local <- list(WW[estCV[[ii]]])
+                                W.estCV_local <- WW[estCV[[ii]]]
                                 SSE_local <- sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
                                 WSSE_local <- sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
                                 GSSE_local <- sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
@@ -831,7 +831,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                         WGSSE_local <- 0
                         ll.length_local <- 0
                         MAD.list_local <- c()
-                        W.estCV_local <- list()
+                        W.estCV_local <- c()
                         
                         if (use_weight == 0) {
                             SSE_local <- sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
@@ -843,7 +843,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                             ll.length_local <- length(ll)
                             MAD.list_local <- (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
                         } else {
-                            W.estCV_local <- list(WW[estCV[[ii]]])
+                            W.estCV_local <- WW[estCV[[ii]]]
                             SSE_local <- sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
                             WSSE_local <- sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
                             GSSE_local <- sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
