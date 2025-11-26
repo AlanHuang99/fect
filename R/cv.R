@@ -348,7 +348,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                 cores <- min(parallel::detectCores() - 2, 8)
             }
             message("Setting up parallel backend with ", cores, " cores for cross-validation...\n")
-            para.clusters <- future::makeClusterPSOCK(cores)
+            para.clusters <- parallel::makeCluster(cores)
             doParallel::registerDoParallel(para.clusters)
         }
 
@@ -398,7 +398,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                             .multicombine = TRUE,
                             .packages = c("fect"),
                             .export = c("inter_fe_ub", "II", "rmCV", "YY", "Y0CV", "X", "use_weight", 
-                                        "W.use", "WW", "beta0CV", "force", "tol", "max.iteration",
+                                        "W.use", "WW", "beta0CV", "r", "force", "tol", "max.iteration",
                                         "T.on", "estCV", "count.T.cv")
                         ) %dopar% {
                             II.cv <- II
@@ -803,7 +803,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                         .packages = c("fect"),
                         .export = c("inter_fe_mc", "II", "rmCV", "YY", "Y0CV", "X", "use_weight", 
                                     "W.use", "WW", "beta0CV", "force", "tol", "max.iteration",
-                                    "T.on", "estCV", "count.T.cv", "lambda")
+                                    "T.on", "estCV", "count.T.cv", "lambda", "i")
                     ) %dopar% {
                         II.cv <- II
                         II.cv[rmCV[[ii]]] <- 0
