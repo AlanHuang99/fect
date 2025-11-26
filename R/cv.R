@@ -31,7 +31,9 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                     max.iteration = 1000,
                     norm.para = NULL,
                     group.level = NULL,
-                    group = NULL) {
+                    group = NULL,
+                    parallel = FALSE, # parallel computing
+                    cores = NULL) {
     ## -------------------------------##
     ## Parsing data
     ## -------------------------------##
@@ -134,6 +136,7 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
 
     validX <- 1 ## no multi-colinearity
     CV.out.ife <- CV.out.mc <- NULL
+    para.clusters <- NULL ## for parallel backend cleanup
 
     ## ----------------------------------------------------##
     ##         Cross-validation of r and lambda           ##
@@ -335,6 +338,16 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
         }
 
 
+        ## Setup parallel backend if requested (used by both IFE and MC methods)
+        if (parallel == TRUE) {
+            if (is.null(cores)) {
+                cores <- min(parallel::detectCores() - 2, 8)
+            }
+            message("Setting up parallel backend with ", cores, " cores for cross-validation...\n")
+            para.clusters <- parallel::makeCluster(cores)
+            doParallel::registerDoParallel(para.clusters)
+        }
+
         ##  --------------------------------------------- ##
         ##  ---------------- cross validation for ife model ------------------  ##
         ##  --------------------------------------------- ##
@@ -364,64 +377,164 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
                 r <- CV.out.ife[i, "r"]
                 ## k <- 5
                 if (criterion %in% c("mspe", "wmspe", "gmspe", "wgmspe", "mad", "moment")) {
-                    SSE <- 0
-                    WSSE <- 0
-                    GSSE <- 0
-                    WGSSE <- 0
-                    ll.length <- 0
-                    moment.list <- c()
-                    index.moment.list <- c()
-                    MAD.list <- c()
-                    for (ii in 1:k) {
-                        II.cv <- II
-                        II.cv[rmCV[[ii]]] <- 0
-                        YY.cv <- YY
-                        YY.cv[rmCV[[ii]]] <- 0
+                    
+                    # Parallelize k-fold cross-validation
+                    if (parallel == TRUE) {
+                        cv_results <- foreach(
+                            ii = 1:k,
+                            .combine = function(a, b) {
+                                list(
+                                    SSE = a$SSE + b$SSE,
+                                    WSSE = a$WSSE + b$WSSE,
+                                    GSSE = a$GSSE + b$GSSE,
+                                    WGSSE = a$WGSSE + b$WGSSE,
+                                    ll.length = a$ll.length + b$ll.length,
+                                    moment.list = c(a$moment.list, b$moment.list),
+                                    index.moment.list = c(a$index.moment.list, b$index.moment.list),
+                                    MAD.list = c(a$MAD.list, b$MAD.list),
+                                    W.estCV = c(a$W.estCV, b$W.estCV)
+                                )
+                            },
+                            .multicombine = TRUE,
+                            .packages = c("fect"),
+                            .export = c("inter_fe_ub", "II", "rmCV", "YY", "Y0CV", "X", "use_weight", 
+                                        "W.use", "WW", "beta0CV", "r", "force", "tol", "max.iteration",
+                                        "T.on", "estCV", "count.T.cv")
+                        ) %dopar% {
+                            II.cv <- II
+                            II.cv[rmCV[[ii]]] <- 0
+                            YY.cv <- YY
+                            YY.cv[rmCV[[ii]]] <- 0
+                            if (use_weight) {
+                                W.use2 <- W.use
+                                W.use2[rmCV[[ii]]] <- 0
+                            } else {
+                                W.use2 <- as.matrix(0)
+                            }
+                            est.cv.fit <- inter_fe_ub(
+                                YY.cv, as.matrix(Y0CV[, , ii]), X, II.cv,
+                                W.use2, as.matrix(beta0CV[, , ii]),
+                                r, force, tol, max.iteration
+                            )$fit
+                            index.cv <- as.character(T.on[estCV[[ii]]])
+                            index.cv[which(is.na(index.cv))] <- "Control"
+                            weight.cv <- count.T.cv[index.cv]
+                            names(weight.cv) <- NULL
+                            
+                            SSE_local <- 0
+                            WSSE_local <- 0
+                            GSSE_local <- 0
+                            WGSSE_local <- 0
+                            ll.length_local <- 0
+                            MAD.list_local <- c()
+                            W.estCV_local <- c()
+                            
+                            if (use_weight == 0) {
+                                SSE_local <- sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                WSSE_local <- sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                GSSE_local <- sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                                ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                                ll <- ll[which(ll > 0)]
+                                WGSSE_local <- sum(log(ll))
+                                ll.length_local <- length(ll)
+                                MAD.list_local <- (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            } else {
+                                W.estCV_local <- WW[estCV[[ii]]]
+                                SSE_local <- sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                WSSE_local <- sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                GSSE_local <- sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                                ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                                ll <- ll[which(ll > 0)]
+                                WGSSE_local <- sum(log(ll))
+                                ll.length_local <- length(ll)
+                                MAD.list_local <- WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            }
+                            
+                            list(
+                                SSE = SSE_local,
+                                WSSE = WSSE_local,
+                                GSSE = GSSE_local,
+                                WGSSE = WGSSE_local,
+                                ll.length = ll.length_local,
+                                moment.list = (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]),
+                                index.moment.list = index.cv,
+                                MAD.list = MAD.list_local,
+                                W.estCV = W.estCV_local
+                            )
+                        }
+                        
+                        SSE <- cv_results$SSE
+                        WSSE <- cv_results$WSSE
+                        GSSE <- cv_results$GSSE
+                        WGSSE <- cv_results$WGSSE
+                        ll.length <- cv_results$ll.length
+                        moment.list <- cv_results$moment.list
+                        index.moment.list <- cv_results$index.moment.list
+                        MAD.list <- cv_results$MAD.list
                         if (use_weight) {
-                            W.use2 <- W.use
-                            W.use2[rmCV[[ii]]] <- 0
-                        } else {
-                            W.use2 <- as.matrix(0)
+                            W.estCV <- cv_results$W.estCV
                         }
-                        est.cv.fit <- inter_fe_ub(
-                            YY.cv, as.matrix(Y0CV[, , ii]), X, II.cv,
-                            W.use2, as.matrix(beta0CV[, , ii]),
-                            r, force, tol, max.iteration
-                        )$fit
-                        index.cv <- as.character(T.on[estCV[[ii]]])
-                        index.cv[which(is.na(index.cv))] <- "Control"
-                        weight.cv <- count.T.cv[index.cv]
-                        names(weight.cv) <- NULL
-                        if (use_weight == 0) {
-                            SSE <- SSE + sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                            WSSE <- WSSE + sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                            GSSE <- GSSE + sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
-                            ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
-                            ll <- ll[which(ll > 0)]
-                            WGSSE <- WGSSE + sum(log(ll))
-                            ll.length <- ll.length + length(ll)
-                            MAD.list <- c(MAD.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        } else {
-                            W.estCV[[ii]] <- WW[estCV[[ii]]]
-                            # print(WW[estCV[[ii]]])
-                            SSE <- SSE + sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                            WSSE <- WSSE + sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                            GSSE <- GSSE + sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
-                            ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
-                            ll <- ll[which(ll > 0)]
-                            WGSSE <- WGSSE + sum(log(ll))
-                            ll.length <- ll.length + length(ll)
-                            MAD.list <- c(MAD.list, WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        }
-                        # moment conditions
-                        moment.list <- c(moment.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]))
-                        index.moment.list <- c(index.moment.list, index.cv)
+                    } else {
+                        # Sequential version (original code)
+                        SSE <- 0
+                        WSSE <- 0
+                        GSSE <- 0
+                        WGSSE <- 0
+                        ll.length <- 0
+                        moment.list <- c()
+                        index.moment.list <- c()
+                        MAD.list <- c()
+                        for (ii in 1:k) {
+                            II.cv <- II
+                            II.cv[rmCV[[ii]]] <- 0
+                            YY.cv <- YY
+                            YY.cv[rmCV[[ii]]] <- 0
+                            if (use_weight) {
+                                W.use2 <- W.use
+                                W.use2[rmCV[[ii]]] <- 0
+                            } else {
+                                W.use2 <- as.matrix(0)
+                            }
+                            est.cv.fit <- inter_fe_ub(
+                                YY.cv, as.matrix(Y0CV[, , ii]), X, II.cv,
+                                W.use2, as.matrix(beta0CV[, , ii]),
+                                r, force, tol, max.iteration
+                            )$fit
+                            index.cv <- as.character(T.on[estCV[[ii]]])
+                            index.cv[which(is.na(index.cv))] <- "Control"
+                            weight.cv <- count.T.cv[index.cv]
+                            names(weight.cv) <- NULL
+                            if (use_weight == 0) {
+                                SSE <- SSE + sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                WSSE <- WSSE + sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                GSSE <- GSSE + sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                                ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                                ll <- ll[which(ll > 0)]
+                                WGSSE <- WGSSE + sum(log(ll))
+                                ll.length <- ll.length + length(ll)
+                                MAD.list <- c(MAD.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            } else {
+                                W.estCV[[ii]] <- WW[estCV[[ii]]]
+                                # print(WW[estCV[[ii]]])
+                                SSE <- SSE + sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                WSSE <- WSSE + sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                                GSSE <- GSSE + sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                                ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                                ll <- ll[which(ll > 0)]
+                                WGSSE <- WGSSE + sum(log(ll))
+                                ll.length <- ll.length + length(ll)
+                                MAD.list <- c(MAD.list, WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            }
+                            # moment conditions
+                            moment.list <- c(moment.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]))
+                            index.moment.list <- c(index.moment.list, index.cv)
 
-                        # resid.mean <- tapply((YY[estCV[[ii]]]-est.cv.fit[estCV[[ii]]]), index.cv, mean)
-                        # resid.mean <- abs(resid.mean)
-                        # weight.cv <- count.T.cv[names(resid.mean)]
-                        # names(weight.cv) <- NULL
-                        # moment <- c(moment, sum(weight.cv*resid.mean)/sum(weight.cv))
+                            # resid.mean <- tapply((YY[estCV[[ii]]]-est.cv.fit[estCV[[ii]]]), index.cv, mean)
+                            # resid.mean <- abs(resid.mean)
+                            # weight.cv <- count.T.cv[names(resid.mean)]
+                            # names(weight.cv) <- NULL
+                            # moment <- c(moment, sum(weight.cv*resid.mean)/sum(weight.cv))
+                        }
                     }
 
                     if (use_weight == 0) {
@@ -668,58 +781,158 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
             break_check <- 0
             for (i in 1:length(lambda)) {
                 ## k <- 5
-                SSE <- 0
-                WSSE <- 0
-                GSSE <- 0
-                WGSSE <- 0
-                ll.length <- 0
-                moment.list <- c()
-                index.moment.list <- c()
-                MAD.list <- c()
-
-                for (ii in 1:k) {
-                    II.cv <- II
-                    II.cv[rmCV[[ii]]] <- 0
-                    YY.cv <- YY
-                    YY.cv[rmCV[[ii]]] <- 0
+                
+                # Parallelize k-fold cross-validation for MC
+                if (parallel == TRUE) {
+                    cv_results <- foreach(
+                        ii = 1:k,
+                        .combine = function(a, b) {
+                            list(
+                                SSE = a$SSE + b$SSE,
+                                WSSE = a$WSSE + b$WSSE,
+                                GSSE = a$GSSE + b$GSSE,
+                                WGSSE = a$WGSSE + b$WGSSE,
+                                ll.length = a$ll.length + b$ll.length,
+                                moment.list = c(a$moment.list, b$moment.list),
+                                index.moment.list = c(a$index.moment.list, b$index.moment.list),
+                                MAD.list = c(a$MAD.list, b$MAD.list),
+                                W.estCV = c(a$W.estCV, b$W.estCV)
+                            )
+                        },
+                        .multicombine = TRUE,
+                        .packages = c("fect"),
+                        .export = c("inter_fe_mc", "II", "rmCV", "YY", "Y0CV", "X", "use_weight", 
+                                    "W.use", "WW", "beta0CV", "force", "tol", "max.iteration",
+                                    "T.on", "estCV", "count.T.cv", "lambda", "i")
+                    ) %dopar% {
+                        II.cv <- II
+                        II.cv[rmCV[[ii]]] <- 0
+                        YY.cv <- YY
+                        YY.cv[rmCV[[ii]]] <- 0
+                        if (use_weight) {
+                            W.use2 <- W.use
+                            W.use2[rmCV[[ii]]] <- 0
+                        } else {
+                            W.use2 <- as.matrix(0)
+                        }
+                        est.cv.fit <- inter_fe_mc(
+                            YY.cv, as.matrix(Y0CV[, , ii]),
+                            X, II.cv, W.use2, as.matrix(beta0CV[, , ii]),
+                            1, lambda[i], force, tol, max.iteration
+                        )$fit
+                        index.cv <- as.character(T.on[estCV[[ii]]])
+                        index.cv[which(is.na(index.cv))] <- "Control"
+                        weight.cv <- count.T.cv[index.cv]
+                        names(weight.cv) <- NULL
+                        
+                        SSE_local <- 0
+                        WSSE_local <- 0
+                        GSSE_local <- 0
+                        WGSSE_local <- 0
+                        ll.length_local <- 0
+                        MAD.list_local <- c()
+                        W.estCV_local <- c()
+                        
+                        if (use_weight == 0) {
+                            SSE_local <- sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            WSSE_local <- sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            GSSE_local <- sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                            ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            ll <- ll[which(ll > 0)]
+                            WGSSE_local <- sum(log(ll))
+                            ll.length_local <- length(ll)
+                            MAD.list_local <- (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                        } else {
+                            W.estCV_local <- WW[estCV[[ii]]]
+                            SSE_local <- sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            WSSE_local <- sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            GSSE_local <- sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                            ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            ll <- ll[which(ll > 0)]
+                            WGSSE_local <- sum(log(ll))
+                            ll.length_local <- length(ll)
+                            MAD.list_local <- WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                        }
+                        
+                        list(
+                            SSE = SSE_local,
+                            WSSE = WSSE_local,
+                            GSSE = GSSE_local,
+                            WGSSE = WGSSE_local,
+                            ll.length = ll.length_local,
+                            moment.list = (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]),
+                            index.moment.list = index.cv,
+                            MAD.list = MAD.list_local,
+                            W.estCV = W.estCV_local
+                        )
+                    }
+                    
+                    SSE <- cv_results$SSE
+                    WSSE <- cv_results$WSSE
+                    GSSE <- cv_results$GSSE
+                    WGSSE <- cv_results$WGSSE
+                    ll.length <- cv_results$ll.length
+                    moment.list <- cv_results$moment.list
+                    index.moment.list <- cv_results$index.moment.list
+                    MAD.list <- cv_results$MAD.list
                     if (use_weight) {
-                        W.use2 <- W.use
-                        W.use2[rmCV[[ii]]] <- 0
-                    } else {
-                        W.use2 <- as.matrix(0)
+                        W.estCV <- cv_results$W.estCV
                     }
-                    est.cv.fit <- inter_fe_mc(
-                        YY.cv, as.matrix(Y0CV[, , ii]),
-                        X, II.cv, W.use2, as.matrix(beta0CV[, , ii]),
-                        1, lambda[i], force, tol, max.iteration
-                    )$fit
-                    index.cv <- as.character(T.on[estCV[[ii]]])
-                    index.cv[which(is.na(index.cv))] <- "Control"
-                    weight.cv <- count.T.cv[index.cv]
-                    names(weight.cv) <- NULL
-                    if (use_weight == 0) {
-                        SSE <- SSE + sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        WSSE <- WSSE + sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        GSSE <- GSSE + sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
-                        ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
-                        ll <- ll[which(ll > 0)]
-                        WGSSE <- WGSSE + sum(log(ll))
-                        ll.length <- ll.length + length(ll)
-                        MAD.list <- c(MAD.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                    } else {
-                        W.estCV[[ii]] <- WW[estCV[[ii]]]
-                        SSE <- SSE + sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        WSSE <- WSSE + sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
-                        GSSE <- GSSE + sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
-                        ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
-                        ll <- ll[which(ll > 0)]
-                        WGSSE <- WGSSE + sum(log(ll))
-                        ll.length <- ll.length + length(ll)
-                        MAD.list <- c(MAD.list, WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                } else {
+                    # Sequential version (original code)
+                    SSE <- 0
+                    WSSE <- 0
+                    GSSE <- 0
+                    WGSSE <- 0
+                    ll.length <- 0
+                    moment.list <- c()
+                    index.moment.list <- c()
+                    MAD.list <- c()
+
+                    for (ii in 1:k) {
+                        II.cv <- II
+                        II.cv[rmCV[[ii]]] <- 0
+                        YY.cv <- YY
+                        YY.cv[rmCV[[ii]]] <- 0
+                        if (use_weight) {
+                            W.use2 <- W.use
+                            W.use2[rmCV[[ii]]] <- 0
+                        } else {
+                            W.use2 <- as.matrix(0)
+                        }
+                        est.cv.fit <- inter_fe_mc(
+                            YY.cv, as.matrix(Y0CV[, , ii]),
+                            X, II.cv, W.use2, as.matrix(beta0CV[, , ii]),
+                            1, lambda[i], force, tol, max.iteration
+                        )$fit
+                        index.cv <- as.character(T.on[estCV[[ii]]])
+                        index.cv[which(is.na(index.cv))] <- "Control"
+                        weight.cv <- count.T.cv[index.cv]
+                        names(weight.cv) <- NULL
+                        if (use_weight == 0) {
+                            SSE <- SSE + sum((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            WSSE <- WSSE + sum(weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            GSSE <- GSSE + sum(log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                            ll <- weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            ll <- ll[which(ll > 0)]
+                            WGSSE <- WGSSE + sum(log(ll))
+                            ll.length <- ll.length + length(ll)
+                            MAD.list <- c(MAD.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                        } else {
+                            W.estCV[[ii]] <- WW[estCV[[ii]]]
+                            SSE <- SSE + sum(WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            WSSE <- WSSE + sum(WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                            GSSE <- GSSE + sum(WW[estCV[[ii]]] * log((YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2))
+                            ll <- WW[estCV[[ii]]] * weight.cv * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2
+                            ll <- ll[which(ll > 0)]
+                            WGSSE <- WGSSE + sum(log(ll))
+                            ll.length <- ll.length + length(ll)
+                            MAD.list <- c(MAD.list, WW[estCV[[ii]]] * (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]])^2)
+                        }
+                        # moment conditions
+                        moment.list <- c(moment.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]))
+                        index.moment.list <- c(index.moment.list, index.cv)
                     }
-                    # moment conditions
-                    moment.list <- c(moment.list, (YY[estCV[[ii]]] - est.cv.fit[estCV[[ii]]]))
-                    index.moment.list <- c(index.moment.list, index.cv)
                 }
                 if (use_weight == 0) {
                     MSPE <- SSE / (length(unlist(estCV)))
@@ -1531,6 +1744,11 @@ fect_cv <- function(Y, # Outcome variable, (T*N) matrix
             group.att = group.att,
             group.output = group.output
         ))
+    }
+    
+    ## Clean up parallel cluster if created
+    if (!is.null(para.clusters)) {
+        parallel::stopCluster(para.clusters)
     }
 
     return(out)

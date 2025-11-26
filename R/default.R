@@ -1964,7 +1964,9 @@ fect.default <- function(
                     max.iteration = max.iteration,
                     norm.para = norm.para,
                     group.level = g.level,
-                    group = G
+                    group = G,
+                    parallel = parallel,
+                    cores = cores
                 )
             } else {
                 out <- fect_binary_cv(
