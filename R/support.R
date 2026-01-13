@@ -1,6 +1,17 @@
 #################################
 ## support function
 #################################
+
+## Safe sampling function to handle length-1 vectors correctly
+## This fixes the reproducibility issue where sample(x, size) treats
+## length-1 x as sample(1:x, size) instead of sampling from x
+safe_sample <- function(x, size, replace = FALSE, prob = NULL) {
+    if (length(x) == 1) {
+        return(rep(x, size))
+    }
+    sample(x, size, replace = replace, prob = prob)
+}
+
 get_term <- function(d,
                      ii,
                      type = "on") {
@@ -361,13 +372,13 @@ cv.sample2 <- function(I, count) {
     cv.id <- NULL
     oci <- which(c(I) == 1)
     if (count <= 3) {
-        cv.id <- sample(oci, count, replace = FALSE)
+        cv.id <- safe_sample(oci, count, replace = FALSE)
     } else {
         ## remove boundary observation
         oci2 <- setdiff(oci, c((1:N) * TT, (TT * (0:(N - 1)) + 1)))
         ## randomly select 1/3
         subcount <- floor(count / 3)
-        rm.id <- sample(oci2, subcount, replace = FALSE)
+        rm.id <- safe_sample(oci2, subcount, replace = FALSE)
         rm.id.upper <- rm.id - 1
         rm.id.lower <- rm.id + 1
 
@@ -378,7 +389,7 @@ cv.sample2 <- function(I, count) {
             cv.id1 <- cv.id1[1:count]
             cv.id2 <- NULL
         } else {
-            cv.id2 <- sample(setdiff(oci, cv.id1), (count - length(cv.id1)), replace = FALSE)
+            cv.id2 <- safe_sample(setdiff(oci, cv.id1), (count - length(cv.id1)), replace = FALSE)
         }
         cv.id <- sort(c(cv.id1, cv.id2))
     }
@@ -481,7 +492,7 @@ cv.sample <- function(I, D, count,
     }
 
     if (cv.count == 1 || count <= 2) { ## randomly missing
-        cv.id <- sample(oci, count, replace = FALSE)
+        cv.id <- safe_sample(oci, count, replace = FALSE)
         rm.id.use <- cv.id
     } else {
         res <- TT %% cv.count
@@ -505,7 +516,7 @@ cv.sample <- function(I, D, count,
             }
         }
 
-        rm.id <- sample(rm.pos, subcount, replace = FALSE)
+        rm.id <- safe_sample(rm.pos, subcount, replace = FALSE)
         rm.id.all <- rm.id
         rm.id.use <- NULL
 
@@ -538,7 +549,7 @@ cv.sample <- function(I, D, count,
             #    rm.id.use <- rm.id.use[1:count]
             # }
         } else {
-            cv.id2 <- sample(setdiff(oci, rm.id.all), (count - length(rm.id.all)), replace = FALSE)
+            cv.id2 <- safe_sample(setdiff(oci, rm.id.all), (count - length(rm.id.all)), replace = FALSE)
             cv.id <- sort(c(rm.id.all, cv.id2))
             ## rm.id.use <- sort(c(rm.id.use, cv.id2))
         }

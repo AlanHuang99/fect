@@ -1,3 +1,9 @@
+# fect (Development version)
+
+## Bug Fixes
+
+* Fixed seed reproducibility issue caused by R's `sample()` function behavior with length-1 vectors. Results are now fully reproducible when a seed is set, regardless of the number of units in treatment/control/reversal groups. This affects bootstrap standard errors, permutation tests, and cross-validation.
+
 # fect 2.0.4
 
 * Add new plot `type = "hte"`

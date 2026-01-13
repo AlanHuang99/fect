@@ -689,7 +689,7 @@ fect_boot <- function(
 
     draw.error <- function() {
       repeat {
-        fake.tr <- sample(id.co, 1, replace = FALSE)
+        fake.tr <- safe_sample(id.co, 1, replace = FALSE)
         if (fake.tr %in% valid.co) {
           break
         }
@@ -697,7 +697,7 @@ fect_boot <- function(
 
       id.co.rest <- id.co[which(!id.co %in% fake.tr)]
       repeat {
-        id.co.pseudo <- sample(id.co.rest, Nco, replace = TRUE)
+        id.co.pseudo <- safe_sample(id.co.rest, Nco, replace = TRUE)
         if (sum(apply(as.matrix(out$I[, id.co.pseudo]), 1, sum) >= 1) == TT) {
           break
         }
@@ -816,7 +816,7 @@ fect_boot <- function(
     one.nonpara <- function(num = NULL) {
       ## boostrap ID
       repeat {
-        fake.co <- sample(id.co, Nco, replace = TRUE)
+        fake.co <- safe_sample(id.co, Nco, replace = TRUE)
         if (sum(apply(as.matrix(I[, fake.co]), 1, sum) >= 1) == TT) {
           break
         }
@@ -846,10 +846,10 @@ fect_boot <- function(
         for (w in 1:Ntr) {
           error.tr.boot[, w] <- error.tr[,
             w,
-            sample(1:nboots, 1, replace = TRUE)
+            safe_sample(1:nboots, 1, replace = TRUE)
           ]
         }
-        error.co.boot <- error.co[, sample(1:Nco, Nco, replace = TRUE)]
+        error.co.boot <- error.co[, safe_sample(1:Nco, Nco, replace = TRUE)]
       }
 
       Y.boot <- fit.out[, id.boot]
@@ -966,7 +966,7 @@ fect_boot <- function(
     }
 
     one.nonpara <- function(num = NULL) {
-      error.id <- sample(1:Nco, N, replace = TRUE)
+      error.id <- safe_sample(1:Nco, N, replace = TRUE)
 
       ## produce the new outcome data
       if (0 %in% I) {
@@ -1155,8 +1155,8 @@ fect_boot <- function(
           if (hasRevs == 0) {
             if (Nco > 0) {
               repeat {
-                fake.co <- sample(co, Nco, replace = TRUE)
-                fake.tr <- sample(tr, Ntr, replace = TRUE)
+                fake.co <- safe_sample(co, Nco, replace = TRUE)
+                fake.tr <- safe_sample(tr, Ntr, replace = TRUE)
                 boot.id <- c(fake.tr, fake.co)
                 if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                   break
@@ -1164,7 +1164,7 @@ fect_boot <- function(
               }
             } else {
               repeat {
-                boot.id <- sample(tr, Ntr, replace = TRUE)
+                boot.id <- safe_sample(tr, Ntr, replace = TRUE)
                 if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                   break
                 }
@@ -1174,9 +1174,9 @@ fect_boot <- function(
             if (Ntr > 0) {
               if (Nco > 0) {
                 repeat {
-                  fake.co <- sample(co, Nco, replace = TRUE)
-                  fake.tr <- sample(tr, Ntr, replace = TRUE)
-                  fake.rev <- sample(rev, Nrev, replace = TRUE)
+                  fake.co <- safe_sample(co, Nco, replace = TRUE)
+                  fake.tr <- safe_sample(tr, Ntr, replace = TRUE)
+                  fake.rev <- safe_sample(rev, Nrev, replace = TRUE)
                   boot.id <- c(fake.rev, fake.tr, fake.co)
                   if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                     break
@@ -1184,8 +1184,8 @@ fect_boot <- function(
                 }
               } else {
                 repeat {
-                  fake.tr <- sample(tr, Ntr, replace = TRUE)
-                  fake.rev <- sample(rev, Nrev, replace = TRUE)
+                  fake.tr <- safe_sample(tr, Ntr, replace = TRUE)
+                  fake.rev <- safe_sample(rev, Nrev, replace = TRUE)
                   boot.id <- c(fake.rev, fake.tr)
                   if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                     break
@@ -1195,8 +1195,8 @@ fect_boot <- function(
             } else {
               if (Nco > 0) {
                 repeat {
-                  fake.co <- sample(co, Nco, replace = TRUE)
-                  fake.rev <- sample(rev, Nrev, replace = TRUE)
+                  fake.co <- safe_sample(co, Nco, replace = TRUE)
+                  fake.rev <- safe_sample(rev, Nrev, replace = TRUE)
                   boot.id <- c(fake.rev, fake.co)
                   if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                     break
@@ -1204,7 +1204,7 @@ fect_boot <- function(
                 }
               } else {
                 repeat {
-                  boot.id <- sample(rev, Nrev, replace = TRUE)
+                  boot.id <- safe_sample(rev, Nrev, replace = TRUE)
                   if (sum(apply(as.matrix(I[, boot.id]), 1, sum) >= 1) == TT) {
                     break
                   }
@@ -1214,7 +1214,7 @@ fect_boot <- function(
           }
         } else {
           cl.id <- c(apply(cl, 2, mean))
-          cl.boot <- sample(cl.unique, length(cl.unique), replace = TRUE)
+          cl.boot <- safe_sample(cl.unique, length(cl.unique), replace = TRUE)
           cl.boot.uni <- unique(cl.boot)
           cl.boot.count <- as.numeric(table(cl.boot))
           boot.id <- c()

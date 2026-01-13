@@ -32,7 +32,7 @@ fect_permu <- function(Y,
         sub.permu <- function() {
             sub.pos <- c()
             tt.length <- length(l.tt)
-            one.rank <- sample(1:tt.length, tt.length, replace = FALSE)
+            one.rank <- safe_sample(1:tt.length, tt.length, replace = FALSE)
             for (i in 1:tt.length) {
                 sub.pos <- c(sub.pos, unlist(l.tt[[one.rank[i]]]))
             }
@@ -71,7 +71,7 @@ fect_permu <- function(Y,
         index.NN <- c(1:NN)
 
         sub.permu <- function() {
-            sample.unit <- sample(index.NN,
+            sample.unit <- safe_sample(index.NN,
                 size = length(index.NN),
                 replace = FALSE
             )
