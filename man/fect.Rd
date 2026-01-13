@@ -63,7 +63,7 @@ assumptions.}
 \item{quantile.CI}{a logical flag indicating whether to use quantile confidence intervals when bootstrapping.}
 \item{nboots}{an integer specifying the number of bootstrap runs. Ignored if \code{se=FALSE}.}
 \item{alpha}{the significance level for hypothesis tests and confidence intervals. Default \code{0.05}.}
-\item{parallel}{a logical flag indicating whether parallel computing will be used in bootstrapping or cross-validation.}
+\item{parallel}{a logical flag indicating whether parallel computing will be used in bootstrapping or cross-validation. For reproducible results when \code{parallel=TRUE}, use the L'Ecuyer-CMRG random number generator: \code{set.seed(seed, kind = "L'Ecuyer-CMRG")} before calling \code{fect()}.}
 \item{cores}{an integer indicating the number of cores for parallel computing.}
 \item{tol}{a positive number indicating the tolerance level for EM updates.}
 \item{max.iteration}{the maximal number of iterations for the EM algorithm.}

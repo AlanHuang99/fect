@@ -114,7 +114,7 @@ fect_permu <- function(Y,
             .inorder = FALSE,
             .export = c("one.permu"),
             .packages = c("fect")
-        ) %dopar% {
+        ) %dorng% {
             return(sub.permu())
         }
 

@@ -769,7 +769,7 @@ fect_boot <- function(
         .export = c("fect_gsynth", "initialFit"),
         .packages = c("fect", "mvtnorm", "fixest"),
         .inorder = FALSE
-      ) %dopar%
+      ) %dorng%
         {
           return(draw.error())
         }
@@ -1574,7 +1574,7 @@ fect_boot <- function(
         "initialFit"
       ),
       .packages = c("fect", "mvtnorm", "fixest")
-    ) %dopar%
+    ) %dorng%
       {
         return(one.nonpara(boot.seq[j]))
       }

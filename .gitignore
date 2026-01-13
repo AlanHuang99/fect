@@ -48,5 +48,16 @@ man/.DS_Store
 .DS_Store
 .RData
 
-check/
+# Compiled object files
+*.o
+*.dll
+*.so
+
+# Data files
+*.parquet
+*.rds
+
+# Test output files
+test_*.log
+fect_reproducibility_reference_*.rdscheck/
 check/*

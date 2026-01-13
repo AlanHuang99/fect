@@ -223,7 +223,7 @@ fect_test <- function(
                             .inorder = FALSE,
                             .export = c("fect_fe", "fect_mc", "fect_polynomial", "get_term"),
                             .packages = c("fect")
-                            ) %dopar% {
+                            ) %dorng% {
                                 return(one.nonpara())
                             }
 
